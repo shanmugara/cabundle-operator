@@ -39,6 +39,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	"github.com/shanmugara/cabundle-operator/internal/controller"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -63,8 +65,10 @@ func main() {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var tlsOpts []func(*tls.Config)
+
 	var interval time.Duration
 	var targetNamespace string
+
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -82,9 +86,9 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
-	flag.DurationVar(&interval, "periodic-interval", 10*time.Second,
-		"The interval at which to enqueue for reconciliation.")
 
+	flag.DurationVar(&interval, "periodic-interval", 1*time.Hour,
+		"The interval at which to enqueue for reconciliation.")
 	flag.StringVar(&targetNamespace, "target-namespace", "cert-manager", "The target namespace to create bundle ConfigMaps in.")
 
 	opts := zap.Options{
@@ -224,9 +228,22 @@ func main() {
 		os.Exit(1)
 	}
 
+	// For startup reconciliation triggering
+	cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "periodic-cabundle-enqueue",
+			Namespace: targetNamespace,
+		},
+	}
+	// send to event channel in a separate goroutine to avoid blocking
+	go func() {
+		eventCh <- event.GenericEvent{Object: cm}
+	}()
+
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+
 }
