@@ -143,6 +143,71 @@ func (r *CABundleReconciler) createOrUpdateConfigMap(ctx context.Context, bundle
 	return r.Update(ctx, cm)
 }
 
+func (r *CABundleReconciler) GetBundleConfigMaps(ctx context.Context) ([]string, error) {
+	logger := logf.FromContext(ctx)
+	cmList := &corev1.ConfigMapList{}
+	err := r.List(ctx, cmList, client.InNamespace(r.TargetNamespace), client.MatchingLabels{"app": "cabundle-operator"})
+	if err != nil {
+		logger.Error(err, "unable to list ConfigMaps")
+		return nil, err
+	}
+
+	var bundleCMNames []string
+	for _, cm := range cmList.Items {
+		bundleCMNames = append(bundleCMNames, cm.Name)
+	}
+
+	return bundleCMNames, nil
+}
+
+func (r *CABundleReconciler) DeleteBundleConfigMap(ctx context.Context, name string) error {
+	logger := logf.FromContext(ctx)
+	cm := &corev1.ConfigMap{}
+	err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: r.TargetNamespace}, cm)
+	if err != nil {
+		logger.Error(err, "unable to fetch ConfigMap for deletion", "name", name)
+		return client.IgnoreNotFound(err)
+	}
+
+	logger.Info("Deleting stale ConfigMap", "name", name)
+	return r.Delete(ctx, cm)
+}
+
+func (r *CABundleReconciler) CleanUpConfigMaps(ctx context.Context, bundles []PEMFile) error {
+	logger := logf.FromContext(ctx)
+	logger.Info("Starting cleanup of stale ConfigMaps")
+
+	bundleCMNames, err := r.GetBundleConfigMaps(ctx)
+	if err != nil {
+		return err
+	}
+
+	existingBundles := make(map[string]bool)
+	for _, b := range bundleCMNames {
+		existingBundles[b] = false
+	}
+	for _, b := range bundles {
+		cmName := r.reName(b.Filename)
+		if _, exists := existingBundles[cmName]; exists {
+			existingBundles[cmName] = true
+		}
+	}
+
+	for cmName, found := range existingBundles {
+		if !found {
+			logger.Info("Found stale ConfigMap to delete", "name", cmName)
+			err := r.DeleteBundleConfigMap(ctx, cmName)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	logger.Info("Cleanup of stale ConfigMaps completed")
+
+	return nil
+}
+
 func (r *CABundleReconciler) reName(name string) string {
 	nameTrimmed := strings.TrimSuffix(name, ".pem")
 	nameTrimmed = strings.TrimSuffix(nameTrimmed, ".crt")

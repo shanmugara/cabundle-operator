@@ -20,6 +20,7 @@ import (
 	"context"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -54,26 +55,44 @@ func (r *CABundleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	Logger := logf.FromContext(ctx)
 	Logger.Info("Reconciling CA bundles", "namespace", req.Namespace, "name", req.Name)
 
-	// TODO(user): your logic here
+	// Read teh ConfigMap to get the URL list
+	var cm corev1.ConfigMap
+	err := r.Get(ctx, req.NamespacedName, &cm)
+	if err != nil {
+		Logger.Error(err, "unable to fetch ConfigMap")
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	baseUrl, ok := cm.Data["bundle_url"]
+	if !ok {
+		Logger.Error(err, "bundle_url key not found in ConfigMap data")
+		return ctrl.Result{}, nil
+	}
+
 	httpCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	baseUrl := "https://omegaspire01.omegaworld.net/bbcacerts"
 	bundles, err := DownloadPEMBundles(httpCtx, baseUrl)
-
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
 	for _, b := range bundles {
+		// Check if ConfigMap already exists for this bundle and mathches content
 		exists := r.checkConfigMap(ctx, b)
 		if exists {
 			continue
 		}
+		// if the ConfigMap does not exist or content differs, create or update it
 		err := r.createOrUpdateConfigMap(ctx, b)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
+	}
+	// Finally Clean up stale ConfigMaps
+	err = r.CleanUpConfigMaps(ctx, bundles)
+	if err != nil {
+		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil

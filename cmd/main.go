@@ -192,6 +192,7 @@ func main() {
 	runner, err := periodic.New(
 		periodic.WithClient(mgr.GetClient()),
 		periodic.WithInterval(interval),
+		periodic.WithTargetNamespace(targetNamespace),
 		periodic.WithEventChannel(eventCh),
 	)
 	if err != nil {

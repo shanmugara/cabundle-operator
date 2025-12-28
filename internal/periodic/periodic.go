@@ -15,9 +15,10 @@ import (
 // Runner is a periodic runner which enqueues Pods for reconciliation on regular
 // intervals.
 type Runner struct {
-	client   client.Client
-	interval time.Duration
-	eventCh  chan event.GenericEvent
+	client          client.Client
+	interval        time.Duration
+	TargetNamespace string
+	eventCh         chan event.GenericEvent
 }
 
 // Option is a function which configures the [Runner].
@@ -56,6 +57,16 @@ func WithInterval(interval time.Duration) Option {
 	return opt
 }
 
+// WithTargetNamespace configures the [Runner] to watch the given namespace.
+func WithTargetNamespace(ns string) Option {
+	opt := func(r *Runner) error {
+		r.TargetNamespace = ns
+		return nil
+	}
+
+	return opt
+}
+
 // WithEventChannel configures the [Runner] to use the given channel for
 // enqueuing.
 func WithEventChannel(ch chan event.GenericEvent) Option {
@@ -87,24 +98,7 @@ func (r *Runner) Start(ctx context.Context) error {
 	}
 }
 
-// enqueueConfigMaps enqueues the ConfigMaps which are properly annotated
-func (r *Runner) enqueueConfigMaps(ctx context.Context) error {
-	var items corev1.ConfigMapList
-	//opts := client.MatchingFields{index.Key: "true"}
-	if err := r.client.List(ctx, &items); err != nil {
-		return err
-	}
-
-	for _, item := range items.Items {
-		event := event.GenericEvent{
-			Object: &item,
-		}
-		r.eventCh <- event
-	}
-
-	return nil
-}
-
+// genericEventChannel enqueues a generic event to trigger reconciliation
 func (r *Runner) genericEventChannel(ctx context.Context) error {
 	logger := log.FromContext(ctx)
 	logger.Info("Enqueuing periodic event")
@@ -112,7 +106,7 @@ func (r *Runner) genericEventChannel(ctx context.Context) error {
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "periodic-cabundle-enqueue",
-			Namespace: "default",
+			Namespace: r.TargetNamespace,
 		},
 	}
 
