@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"flag"
 	"os"
@@ -27,10 +28,14 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	"github.com/shanmugara/cabundle-operator/internal/periodic"
+	"github.com/spf13/pflag"
+	"github.com/spf13/viper"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -66,30 +71,71 @@ func main() {
 	var enableHTTP2 bool
 	var tlsOpts []func(*tls.Config)
 
-	var interval time.Duration
+	var interval time.Duration = 1 * time.Hour
 	var targetNamespace string
+	var configMapName string
 
-	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
+	// flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
+	// 	"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
+	// flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
+	// flag.BoolVar(&enableLeaderElection, "leader-elect", false,
+	// 	"Enable leader election for controller manager. "+
+	// 		"Enabling this will ensure there is only one active controller manager.")
+	// flag.BoolVar(&secureMetrics, "metrics-secure", true,
+	// 	"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
+	// flag.StringVar(&webhookCertPath, "webhook-cert-path", "", "The directory that contains the webhook certificate.")
+	// flag.StringVar(&webhookCertName, "webhook-cert-name", "tls.crt", "The name of the webhook certificate file.")
+	// flag.StringVar(&webhookCertKey, "webhook-cert-key", "tls.key", "The name of the webhook key file.")
+	// flag.StringVar(&metricsCertPath, "metrics-cert-path", "",
+	// 	"The directory that contains the metrics server certificate.")
+	// flag.StringVar(&metricsCertName, "metrics-cert-name", "tls.crt", "The name of the metrics server certificate file.")
+	// flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
+	// flag.BoolVar(&enableHTTP2, "enable-http2", false,
+	// 	"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+
+	// // flag.DurationVar(&interval, "periodic-interval", 1*time.Hour,
+	// // 	"The interval at which to enqueue for reconciliation.")
+	// flag.StringVar(&targetNamespace, "target-namespace", "cert-manager", "The target namespace to create bundle ConfigMaps in.")
+	// flag.StringVar(&configMapName, "configmap-name", "periodic-cabundle-enqueue", "The name of the ConfigMap containing operator configuration.")
+
+	pflag.String("metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
-	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
-	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
-		"Enable leader election for controller manager. "+
-			"Enabling this will ensure there is only one active controller manager.")
-	flag.BoolVar(&secureMetrics, "metrics-secure", true,
-		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
-	flag.StringVar(&webhookCertPath, "webhook-cert-path", "", "The directory that contains the webhook certificate.")
-	flag.StringVar(&webhookCertName, "webhook-cert-name", "tls.crt", "The name of the webhook certificate file.")
-	flag.StringVar(&webhookCertKey, "webhook-cert-key", "tls.key", "The name of the webhook key file.")
-	flag.StringVar(&metricsCertPath, "metrics-cert-path", "",
-		"The directory that contains the metrics server certificate.")
-	flag.StringVar(&metricsCertName, "metrics-cert-name", "tls.crt", "The name of the metrics server certificate file.")
-	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
-	flag.BoolVar(&enableHTTP2, "enable-http2", false,
-		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	pflag.String("health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
+	pflag.Bool("leader-elect", false, "Enable leader election for controller manager. "+
+		"Enabling this will ensure there is only one active controller manager.")
+	pflag.Bool("metrics-secure", true, "If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
+	pflag.String("webhook-cert-path", "", "The directory that contains the webhook certificate.")
+	pflag.String("webhook-cert-name", "tls.crt", "The name of the webhook certificate file.")
+	pflag.String("webhook-cert-key", "tls.key", "The name of the webhook key file.")
+	pflag.String("metrics-cert-path", "", "The directory that contains the metrics server certificate.")
+	pflag.String("metrics-cert-name", "tls.crt", "The name of the metrics server certificate file.")
+	pflag.String("metrics-cert-key", "tls.key", "The name of the metrics server key file.")
+	pflag.Bool("enable-http2", false, "If set, HTTP/2 will be enabled for the metrics and webhook servers")
 
-	flag.DurationVar(&interval, "periodic-interval", 1*time.Hour,
-		"The interval at which to enqueue for reconciliation.")
-	flag.StringVar(&targetNamespace, "target-namespace", "cert-manager", "The target namespace to create bundle ConfigMaps in.")
+	pflag.StringVar(&targetNamespace, "target-namespace", "cert-manager", "The target namespace to create bundle ConfigMaps in.")
+	pflag.StringVar(&configMapName, "configmap-name", "periodic-cabundle-enqueue", "The name of the ConfigMap containing operator configuration.")
+
+	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
+	pflag.Parse()
+
+	viper.BindPFlags(pflag.CommandLine)
+	viper.SetEnvPrefix("CABO")
+	viper.AutomaticEnv()
+
+	metricsAddr = viper.GetString("metrics-bind-address")
+	probeAddr = viper.GetString("health-probe-bind-address")
+	enableLeaderElection = viper.GetBool("leader-elect")
+	secureMetrics = viper.GetBool("metrics-secure")
+	webhookCertPath = viper.GetString("webhook-cert-path")
+	webhookCertName = viper.GetString("webhook-cert-name")
+	webhookCertKey = viper.GetString("webhook-cert-key")
+	metricsCertPath = viper.GetString("metrics-cert-path")
+	metricsCertName = viper.GetString("metrics-cert-name")
+	metricsCertKey = viper.GetString("metrics-cert-key")
+	enableHTTP2 = viper.GetBool("enable-http2")
+
+	targetNamespace = viper.GetString("target-namespace")
+	configMapName = viper.GetString("configmap-name")
 
 	opts := zap.Options{
 		Development: true,
@@ -193,10 +239,44 @@ func main() {
 	// Setup the periodic runner
 	eventCh := make(chan event.GenericEvent)
 
+	// For initial startup reconciliation triggering
+	cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      configMapName,
+			Namespace: targetNamespace,
+		},
+	}
+
+	// fetch the config
+	directCLient, err := client.New(config.GetConfigOrDie(), client.Options{Scheme: scheme})
+	if err != nil {
+		setupLog.Error(err, "unable to create direct client to fetch operator configuration")
+		os.Exit(1)
+	}
+
+	err = directCLient.Get(context.Background(), client.ObjectKey{Name: configMapName, Namespace: targetNamespace}, cm)
+	if err != nil {
+		setupLog.Error(err, "unable to fetch operator configuration from ConfigMap", "name", configMapName, "namespace", targetNamespace)
+		os.Exit(1)
+	}
+
+	syncInterval, err := time.ParseDuration(cm.Data["sync_interval"])
+
+	if err != nil {
+		setupLog.Error(err, "unable to parse sync-interval. Using default", "interval", interval)
+		syncInterval = interval
+	}
+
+	// send to event channel in a separate goroutine to avoid blocking
+	go func() {
+		eventCh <- event.GenericEvent{Object: cm}
+	}()
+
 	runner, err := periodic.New(
 		periodic.WithClient(mgr.GetClient()),
-		periodic.WithInterval(interval),
+		periodic.WithInterval(syncInterval),
 		periodic.WithTargetNamespace(targetNamespace),
+		periodic.WithConfigMapName(configMapName),
 		periodic.WithEventChannel(eventCh),
 	)
 	if err != nil {
@@ -228,19 +308,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// For startup reconciliation triggering
-	cm := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "periodic-cabundle-enqueue",
-			Namespace: targetNamespace,
-		},
-	}
-	// send to event channel in a separate goroutine to avoid blocking
-	go func() {
-		eventCh <- event.GenericEvent{Object: cm}
-	}()
-
-	setupLog.Info("starting manager")
+	setupLog.Info("starting manager with options", "base_url", cm.Data["bundle_url"], "sync_interval", syncInterval.String())
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)

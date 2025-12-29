@@ -12,7 +12,8 @@ COPY go.sum go.sum
 RUN go mod download
 
 # Copy the Go source (relies on .dockerignore to filter)
-COPY . .
+COPY cmd/main.go  cmd/main.go
+COPY internal/ internal/
 
 # Build
 # the GOARCH has no default value to allow the binary to be built according to the host where the command

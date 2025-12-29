@@ -7,6 +7,14 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: system
 ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: periodic-cabundle-enqueue
+  namespace: system
+data:
+  key: value
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:

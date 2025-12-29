@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.periodicCabundleEnqueue.name }}
+  labels:
+  {{- include "cabundle-operator.labels" . | nindent 4 }}
+data:
+  bundle_url: {{ .Values.periodicCabundleEnqueue.bundle_url | quote }}
+  sync_interval: {{ .Values.periodicCabundleEnqueue.sync_interval | quote }}

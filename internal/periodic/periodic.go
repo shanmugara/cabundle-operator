@@ -18,6 +18,7 @@ type Runner struct {
 	client          client.Client
 	interval        time.Duration
 	TargetNamespace string
+	configMapName   string
 	eventCh         chan event.GenericEvent
 }
 
@@ -67,6 +68,17 @@ func WithTargetNamespace(ns string) Option {
 	return opt
 }
 
+// With ConfigMapName configures the [Runner] with the name of the ConfigMap
+// containing operator configuration.
+func WithConfigMapName(name string) Option {
+	opt := func(r *Runner) error {
+		r.configMapName = name
+		return nil
+	}
+
+	return opt
+}
+
 // WithEventChannel configures the [Runner] to use the given channel for
 // enqueuing.
 func WithEventChannel(ch chan event.GenericEvent) Option {
@@ -105,7 +117,7 @@ func (r *Runner) genericEventChannel(ctx context.Context) error {
 
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "periodic-cabundle-enqueue",
+			Name:      r.configMapName,
 			Namespace: r.TargetNamespace,
 		},
 	}

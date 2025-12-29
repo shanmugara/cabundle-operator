@@ -1,0 +1,67 @@
+controllerManager:
+  manager:
+    # args:
+    # - --metrics-bind-address=:8443
+    # - --leader-elect
+    # - --health-probe-bind-address=:8081
+    containerSecurityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+        - ALL
+      readOnlyRootFilesystem: true
+    image:
+      repository: docker.io/shanmugara/cabundle-operator
+      tag: v0.0.1
+      pullPolicy: Always
+
+    resources:
+      limits:
+        cpu: 500m
+        memory: 128Mi
+      requests:
+        cpu: 10m
+        memory: 64Mi
+  nodeSelector: {}
+  podSecurityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  replicas: 1
+  tolerations: []
+  topologySpreadConstraints: []
+metricsService:
+  ports:
+  - name: https
+    port: 8443
+    protocol: TCP
+    targetPort: 8443
+  type: ClusterIP
+
+periodicCabundleEnqueue:
+  name: periodic-cabundle-enqueue
+  bundle_url: https://omegaspire01.omegaworld.net/bbcacerts
+  sync_interval: 5m0s
+
+serviceAccount:
+  annotations: {}
+  automount: true
+  create: true
+  name: "cabundle-operator-controller-manager"
+
+env:
+  - name: SSL_CERT_FILE
+    value: /etc/ssl/certs/ca-certificates.crt
+
+volumes:
+  - name: ca-certs
+    configMap:
+      name: omega-bundle
+      items:
+      - key: root-certs.pem
+        path: ca-certificates.crt
+
+volumeMounts:
+  - name: ca-certs
+    mountPath: /etc/ssl/certs/ca-certificates.crt
+    subPath: ca-certificates.crt
